@@ -37,9 +37,9 @@ jobs:
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
         with:
           platforms: arm64
-      - name: Start RustFS
-        run: docker compose up -d rustfs
-      - name: Wait for RustFS
+      - name: Start RustFS and Postgres
+        run: docker compose --profile postgres up -d rustfs postgres
+      - name: Wait for RustFS and Postgres
         run: |
           python - <<'PY'
           import time, urllib.request
@@ -54,10 +54,20 @@ jobs:
           else:
               raise SystemExit('RustFS did not become ready')
           PY
+          for _ in $(seq 1 60); do
+            if docker compose --profile postgres exec -T postgres pg_isready -U objectrecord -d object_record; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Postgres did not become ready" >&2
+          exit 1
       - name: Every example against RustFS and deoos-server
         run: ./scripts/test.sh
       - name: Counting House via the documented Docker command
         run: docker compose run --build --rm counting-house
+      - name: Object record via the documented Docker command
+        run: docker compose --profile postgres run --build --rm object-record
       - name: Capture RustFS logs
         if: always()
         run: |

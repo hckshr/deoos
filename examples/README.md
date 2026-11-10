@@ -28,16 +28,17 @@ That installs deoos, starts RustFS on `127.0.0.1:19000`, creates the bucket `deo
 | [Payment](python/payment/README.md) | One charge across a crash and an expired idempotency window | `docker compose run --build --rm payment-resume` |
 | [Document index](python/document-index/README.md) | An index that keeps documents already read | `docker compose run --build --rm document-index` |
 | [Counting House](python/counting-house/README.md) | A refund a person approves, with compensation | `docker compose run --build --rm counting-house` |
+| [Object record](python/object-record/README.md) | A file upload and a Postgres row that cannot share a transaction | `docker compose --profile postgres run --build --rm object-record` |
 | [HTTP integrations](python/integrations/README.md) | Webhook retry, invoice approval, scheduled import | `python tests/use_cases.py` |
 | [Nightly batch](python/nightly-batch-resume/README.md) | 10,000 emails that do not resend after a kill | `docker compose run --build --rm nightly-batch-resume` |
 | [Agent run](python/agent-run-resume/README.md) | Saved model calls and one charge key across a timeout | `docker compose run --build --rm agent-run-resume` |
 | [Offline approval](python/offline-approval-ledger/README.md) | An air-gapped approval tied to one transfer | `./scripts/bundle_offline.sh` then `docker compose -f compose.offline.yaml run --rm offline-approval-ledger` |
 | [Multi-arch handoff](python/multi-arch-handoff/README.md) | The same maintenance result on amd64 and arm64 | `python tests/multi_arch_handoff_demo.py` |
 
-Python and TypeScript implement the same workflows, except Counting House, which is Python only. TypeScript commands are in each example README.
+Python and TypeScript implement the same workflows, except Counting House and Object record, which are Python only. TypeScript commands are in each example README.
 
 ## Tests
 
-`./scripts/test.sh` runs every example above against RustFS. [`.github/workflows/examples.yml`](../.github/workflows/examples.yml) runs that script on pull requests and on pushes to `main`, then `docker compose run --build --rm counting-house`. The approval test builds `outputs/offline-bundle.tar` and runs it on an internal network. The handoff test builds the amd64 and arm64 workers and points both at `deoos-server`.
+`./scripts/test.sh` runs every example above against RustFS. Object record also uses Postgres and starts it when port 54329 is closed. [`.github/workflows/examples.yml`](../.github/workflows/examples.yml) runs that script on pull requests and on pushes to `main`, then `docker compose run --build --rm counting-house` and `docker compose --profile postgres run --build --rm object-record`. The approval test builds `outputs/offline-bundle.tar` and runs it on an internal network. The handoff test builds the amd64 and arm64 workers and points both at `deoos-server`.
 
 Start RustFS first (`docker compose up -d rustfs`, or the setup command above).

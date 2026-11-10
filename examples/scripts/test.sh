@@ -25,6 +25,8 @@ echo "HTTP integrations"
 python tests/use_cases.py
 python tests/payment_resume.py
 python tests/counting_house.py
+echo "object record (staged upload and a Postgres row)"
+python tests/object_record.py
 python tests/document_index_demo.py
 python tests/devto_etl_demo.py
 python tests/hacker_news_demo.py

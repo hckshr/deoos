@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-demo=${1:?Choose hacker-news, devto-etl, payment-resume, document-index, counting-house, nightly-batch-resume, agent-run-resume, offline-approval-ledger, or multi-arch-handoff.}
+demo=${1:?Choose hacker-news, devto-etl, payment-resume, document-index, counting-house, object-record, nightly-batch-resume, agent-run-resume, offline-approval-ledger, or multi-arch-handoff.}
 shift
 case "$demo" in
   hacker-news)
@@ -11,6 +11,12 @@ case "$demo" in
   counting-house)
     exec python /app/python/counting-house/demo.py \
       --endpoint http://rustfs:9000 --directory /app/outputs/counting-house "$@"
+    ;;
+  object-record)
+    exec python /app/python/object-record/demo.py \
+      --endpoint http://rustfs:9000 \
+      --database-url "postgresql://objectrecord:object-record-local-only@postgres:5432/object_record" \
+      --directory /app/outputs/object-record "$@"
     ;;
   devto-etl|payment-resume|document-index|nightly-batch-resume|agent-run-resume)
     case "$demo" in

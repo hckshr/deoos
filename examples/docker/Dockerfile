@@ -38,7 +38,7 @@ RUN set -eu; \
     test -s selected.sha256; \
     sha256sum -c selected.sha256; \
     tar -xzf "$archive" --strip-components=1 -C /opt/deoos; \
-    python -m pip install --no-cache-dir /opt/deoos/python/*.whl duckdb==1.5.6 boto3==1.42.97; \
+    python -m pip install --no-cache-dir /opt/deoos/python/*.whl duckdb==1.5.6 boto3==1.42.97 'psycopg[binary]==3.3.8'; \
     cd /app; \
     npm install --no-audit --no-fund /opt/deoos/node/*.tgz @duckdb/node-api@1.5.6-r.1 @aws-sdk/client-s3@3.1158.0; \
     rm -rf /tmp/release
