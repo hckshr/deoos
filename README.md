@@ -37,7 +37,7 @@ These are the workflows to try first. Every command below runs from the `example
 
 Python and TypeScript both run the agent, the nightly batch, the document index, and the multi-arch handoff. The offline approval ledger is Python. TypeScript commands are in each example README.
 
-Other examples: a greeting, an order, a payment replay, a Hacker News snapshot, a DEV article export, a refund, and HTTP integrations. Commands for those are in [`examples/README.md`](examples/README.md).
+Other examples: a greeting, an order, a payment replay, a Hacker News snapshot, a DEV article export, a refund, an uploaded file recorded in Postgres, and HTTP integrations. Commands for those are in [`examples/README.md`](examples/README.md).
 
 For your own application, use the wheel or Node package from [Install](#install). These snippets use library mode with your bucket and cloud credentials.
 

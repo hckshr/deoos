@@ -38,6 +38,31 @@ services:
   counting-house:
     <<: *demo
     entrypoint: [deoos-demo, counting-house]
+  # Not started by `docker compose up -d`, which stays RustFS-only.
+  # `docker compose --profile postgres up -d postgres` publishes it on 54329.
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+    ports:
+      - "127.0.0.1:54329:5432"
+    environment:
+      POSTGRES_USER: objectrecord
+      POSTGRES_PASSWORD: object-record-local-only
+      POSTGRES_DB: object_record
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U objectrecord -d object_record"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+  object-record:
+    <<: *demo
+    depends_on:
+      rustfs:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    entrypoint: [deoos-demo, object-record]
   nightly-batch-resume:
     <<: *demo
     entrypoint: [deoos-demo, nightly-batch-resume]
