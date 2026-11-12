@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# Leave running tests time to clean their own S3 buckets.
+# Leave a running job time to tear down its local RustFS volume.
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: false
@@ -110,13 +110,10 @@ jobs:
 
   packages:
     needs: checks
-    # DeoosCiActions authorizes workflow_dispatch OIDC tokens. A push to main
-    # is rejected with sts:AssumeRoleWithWebIdentity, so this matrix stays manual.
+    # Multi-platform package build. Manual only; pull requests and pushes run checks.
+    # This job does not deploy and does not use cloud credentials.
     if: github.event_name == 'workflow_dispatch'
     timeout-minutes: 90
-    permissions:
-      contents: read
-      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -140,9 +137,6 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      DEOOS_EXPECTED_AWS_ACCOUNT: ${{ vars.AWS_ACCOUNT_ID }}
-      DEOOS_TEST_BUCKET_PREFIX: deoos-ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.target }}-
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -190,30 +184,11 @@ jobs:
           python tests/local_faults.py --binary engine/target/release/deoos-server --mounts
           python -m pip install outputs/release/deoos-*/python/*.whl
           python tests/mcp_behavior.py --binary engine/target/release/deoos-server --backend filesystem --faults --report outputs/evidence/mcp-filesystem.json
-      - name: Validate required AWS account configuration
-        run: python packaging/ci.py account-config
-      - name: Obtain short-lived credentials for the configured test account
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-          role-session-name: deoos-${{ github.run_id }}-${{ strategy.job-index }}
-          role-duration-seconds: 3600
-      - name: Verify AWS account
-        run: python packaging/ci.py identity
-      - name: Test installed Linux packages against S3
-        if: startsWith(matrix.target, 'linux-')
-        timeout-minutes: 15
-        run: python packaging/ci.py linux-test "${{ matrix.target }}"
-      - name: Test installed macOS and Windows packages against S3
-        if: ${{ !startsWith(matrix.target, 'linux-') }}
-        timeout-minutes: 15
-        run: python tests/package_smoke.py --backend aws --aws-profile auto
-      - name: Clean exact test buckets and temporary container
+      - name: Remove the temporary build container
         if: always()
         timeout-minutes: 10
         run: python packaging/ci.py cleanup
-      - name: Upload tested packages
+      - name: Upload built packages
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: deoos-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
