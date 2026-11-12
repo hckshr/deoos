@@ -1,8 +1,6 @@
-"""Native CI build, ABI audit, and exact-bucket cleanup; no publishing."""
+"""Native CI build and ABI audit; no publishing."""
 import argparse
-import hashlib
 import json
-import os
 import pathlib
 import platform
 import re
@@ -101,81 +99,19 @@ python packaging/ci.py audit {target}
     write('linux-image.json', {'target': target, 'image': image, 'rustup_version': '1.28.2', 'rustup_sha256': rustup_sha, 'node_sha256': node_sha})
 
 
-def linux_test(target):
-    host(target)
-    args = ['docker', 'exec']
-    for name in ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN', 'AWS_REGION', 'AWS_DEFAULT_REGION', 'DEOOS_EXPECTED_AWS_ACCOUNT', 'DEOOS_TEST_BUCKET_PREFIX']:
-        if name in os.environ:
-            args += ['--env', name]  # Docker reads the value; credentials never appear in argv.
-    args += [CONTAINER, 'bash', '-c', 'export PATH=/opt/deoos-node/bin:/opt/deoos-cargo/bin:/opt/python/cp312-cp312/bin:$PATH; cd /work/repo; python tests/package_smoke.py --backend aws --aws-profile auto']
-    run(*args)
-
-
-def account_config():
-    expected_account = os.environ.get('DEOOS_EXPECTED_AWS_ACCOUNT', '')
-    if not re.fullmatch(r'[0-9]{12}', expected_account):
-        raise ValueError('DEOOS_EXPECTED_AWS_ACCOUNT must be a 12-digit account ID')
-    return expected_account
-
-
-def aws_client():
-    expected_account = account_config()
-    import boto3
-    session = boto3.Session(region_name='us-east-1')
-    identity = session.client('sts').get_caller_identity()
-    assert identity['Account'] == expected_account, 'AWS account does not match configured CI account'
-    return session.client('s3'), identity
-
-
-def identity():
-    _, caller = aws_client()
-    write('ci-account.json', {'account': caller['Account'], 'arn': caller['Arn']})
-
-
 def cleanup():
-    failures, results = [], []
-    try:
-        reports = sorted(EVIDENCE.glob('package-smoke-*-aws.json'))
-        if reports:
-            s3, _ = aws_client()
-            prefix = os.environ['DEOOS_TEST_BUCKET_PREFIX']
-            assert prefix.startswith('deoos-ci-')
-            for path in reports:
-                bucket = json.loads(path.read_text())['bucket']
-                assert bucket.startswith(prefix), 'Cleanup bucket outside this CI run'
-                try:
-                    for page in s3.get_paginator('list_objects_v2').paginate(Bucket=bucket):
-                        objects = [{'Key': row['Key']} for row in page.get('Contents', [])]
-                        if objects:
-                            deleted = s3.delete_objects(Bucket=bucket, Delete={'Objects': objects})
-                            assert not deleted.get('Errors'), deleted.get('Errors')
-                    s3.delete_bucket(Bucket=bucket)
-                except Exception as error:
-                    if str(getattr(error, 'response', {}).get('Error', {}).get('Code')) not in ('NoSuchBucket', '404', 'NotFound'):
-                        raise
-                try:
-                    s3.head_bucket(Bucket=bucket)
-                    raise AssertionError('Test bucket still exists')
-                except Exception as error:
-                    if str(getattr(error, 'response', {}).get('Error', {}).get('Code')) not in ('NoSuchBucket', '404', 'NotFound'):
-                        raise
-                results.append({'bucket': bucket, 'cleaned': True})
-    except Exception as error:
-        failures.append(f'{type(error).__name__}: {error}')
-    finally:
-        if platform.system() == 'Linux':
-            subprocess.run(['docker', 'rm', '-f', CONTAINER], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        write('ci-cleanup.json', {'buckets': results, 'errors': failures})
-    assert not failures, failures
+    if platform.system() == 'Linux':
+        subprocess.run(['docker', 'rm', '-f', CONTAINER], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    write('ci-cleanup.json', {'container': CONTAINER, 'removed': platform.system() == 'Linux'})
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['linux-build', 'linux-test', 'verify', 'audit', 'account-config', 'identity', 'cleanup'])
+    parser.add_argument('command', choices=['linux-build', 'verify', 'audit', 'cleanup'])
     parser.add_argument('target', nargs='?', choices=tuple(PACKAGER['TARGETS']))
     args = parser.parse_args()
-    if args.command in ['account-config', 'identity', 'cleanup']:
-        globals()[args.command.replace('-', '_')]()
+    if args.command == 'cleanup':
+        cleanup()
     else:
         if not args.target:
             parser.error('target is required')
