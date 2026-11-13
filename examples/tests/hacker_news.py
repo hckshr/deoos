@@ -205,6 +205,24 @@ try:
                     return
                 time.sleep(.1)
             raise AssertionError(f'lease did not expire: status={last.get("status")} expires_at={last.get("expires_at")}')
+        def resume(sdk):
+            # One claim can lose the race with a renewed lease or a transient
+            # storage 503. The task stays queued while attempts remain.
+            deadline = time.monotonic() + 180
+            detail = ''
+            while time.monotonic() < deadline:
+                result = subprocess.run(command(sdk, 'work', '--once'), capture_output=True, text=True, timeout=180, env=os.environ.copy())
+                detail = result.stdout + result.stderr
+                state = c.inspect(task_id)
+                if state['status'] == 'completed':
+                    return state
+                if state['status'] in ('failed', 'cancelled') and state.get('attempts', 0) >= 5:
+                    raise AssertionError(detail + '\n' + json.dumps({key: state.get(key) for key in ('status', 'error', 'attempts')}))
+                if state['status'] == 'running' and state.get('expires_at', 0) > time.time() * 1000:
+                    reclaim_delay()
+                else:
+                    time.sleep(.3)
+            raise AssertionError('resume did not complete: ' + detail)
         for mode in ['library', 'server']:
             for sdk in ['python', 'typescript']:
                 opposite = 'typescript' if sdk == 'python' else 'python'
@@ -240,8 +258,7 @@ try:
                 gap_counts = source.counts(request_start)
                 assert all(gap_counts[path] == count for path, count in first_counts.items())
                 second.kill(); second.wait(); reclaim_delay()
-                cli(sdk, 'work', '--once')
-                final = c.inspect(task_id); assert final['status'] == 'completed', final
+                final = resume(sdk)
                 assert final['output'] == dict(task_id=task_id, stories=100, database=str(database)), final['output']
                 hashes = verify(database, source, [task_id], seeded, gap_hashes)
                 preserved(database, seeded)
