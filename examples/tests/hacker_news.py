@@ -193,8 +193,36 @@ try:
             with log.open('w') as output: process = subprocess.Popen(cmd, env=env, stdout=output, stderr=subprocess.STDOUT)
             procs.append(process); wait(ready.exists, process=process, log=log)
             return process, json.loads(ready.read_text()), release, log
-        def reclaim_delay(state):
-            time.sleep(max(0, (state['expires_at'] - time.time() * 1000) / 1000) + .2)
+        def reclaim_delay():
+            # The barrier worker renews its lease. A snapshot taken before the
+            # kill can expire while the server still has a newer expiry.
+            deadline = time.monotonic() + 30
+            last = None
+            while time.monotonic() < deadline:
+                last = c.inspect(task_id)
+                if last.get('status') != 'running' or last.get('expires_at', 0) <= time.time() * 1000:
+                    time.sleep(.2)
+                    return
+                time.sleep(.1)
+            raise AssertionError(f'lease did not expire: status={last.get("status")} expires_at={last.get("expires_at")}')
+        def resume(sdk):
+            # One claim can lose the race with a renewed lease or a transient
+            # storage 503. The task stays queued while attempts remain.
+            deadline = time.monotonic() + 180
+            detail = ''
+            while time.monotonic() < deadline:
+                result = subprocess.run(command(sdk, 'work', '--once'), capture_output=True, text=True, timeout=180, env=os.environ.copy())
+                detail = result.stdout + result.stderr
+                state = c.inspect(task_id)
+                if state['status'] == 'completed':
+                    return state
+                if state['status'] in ('failed', 'cancelled') and state.get('attempts', 0) >= 5:
+                    raise AssertionError(detail + '\n' + json.dumps({key: state.get(key) for key in ('status', 'error', 'attempts')}))
+                if state['status'] == 'running' and state.get('expires_at', 0) > time.time() * 1000:
+                    reclaim_delay()
+                else:
+                    time.sleep(.3)
+            raise AssertionError('resume did not complete: ' + detail)
         for mode in ['library', 'server']:
             for sdk in ['python', 'typescript']:
                 opposite = 'typescript' if sdk == 'python' else 'python'
@@ -218,7 +246,7 @@ try:
                 payloads, links, first_hashes = rows(database)
                 assert set(payloads) == set(ids[:20]) and len(links) == 20
                 preserved(database, seeded)
-                first_counts = source.counts(request_start); first.kill(); first.wait(); reclaim_delay(state)
+                first_counts = source.counts(request_start); first.kill(); first.wait(); reclaim_delay()
                 second, gap, _, retry_log = worker(opposite, 'gap', label + '-21')
                 state = c.inspect(task_id)
                 assert gap['step'] == f'store-{ids[20]}' and gap['step'] not in state['steps']
@@ -229,9 +257,8 @@ try:
                 assert all(gap_hashes[key] == value for key, value in first_hashes.items())
                 gap_counts = source.counts(request_start)
                 assert all(gap_counts[path] == count for path, count in first_counts.items())
-                second.kill(); second.wait(); reclaim_delay(state)
-                cli(sdk, 'work', '--once')
-                final = c.inspect(task_id); assert final['status'] == 'completed'
+                second.kill(); second.wait(); reclaim_delay()
+                final = resume(sdk)
                 assert final['output'] == dict(task_id=task_id, stories=100, database=str(database)), final['output']
                 hashes = verify(database, source, [task_id], seeded, gap_hashes)
                 preserved(database, seeded)

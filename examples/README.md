@@ -34,11 +34,16 @@ That installs deoos, starts RustFS on `127.0.0.1:19000`, creates the bucket `deo
 | [Agent run](python/agent-run-resume/README.md) | Saved model calls and one charge key across a timeout | `docker compose run --build --rm agent-run-resume` |
 | [Offline approval](python/offline-approval-ledger/README.md) | An air-gapped approval tied to one transfer | `./scripts/bundle_offline.sh` then `docker compose -f compose.offline.yaml run --rm offline-approval-ledger` |
 | [Multi-arch handoff](python/multi-arch-handoff/README.md) | The same maintenance result on amd64 and arm64 | `python tests/multi_arch_handoff_demo.py` |
+| [Scheduled ETL](python/scheduled-etl/README.md) | A dependency graph, a retried extract, and a skipped overlapping interval | `python tests/scheduled_etl_demo.py` |
+| [Warehouse backfill](python/warehouse-backfill/README.md) | A date-range reload that does not double-write after a crash or a second run | `python tests/warehouse_backfill_demo.py` |
+| [Partition sensor](python/partition-sensor/README.md) | Wait for an object in local RustFS, then load it | `python tests/partition_sensor_demo.py` |
+| [dbt DuckDB](python/dbt-duckdb/README.md) | `dbt run` then `dbt test`, including a test that fails the task | `python tests/dbt_duckdb_demo.py` |
+| [Airflow comparison](python/airflow-compare/README.md) | One revenue DAG in Airflow 2.11 and the deoos rewrite, same JSON | `python tests/airflow_compare_demo.py` |
 
-Python and TypeScript implement the same workflows, except Counting House and Object record, which are Python only. TypeScript commands are in each example README.
+Python and TypeScript implement the same workflows, except Counting House, Object record, and the Airflow-style examples (scheduled ETL, warehouse backfill, partition sensor, dbt, and the Airflow comparison), which are Python only. TypeScript commands are in each example README.
 
 ## Tests
 
-`./scripts/test.sh` runs every example above against RustFS. Object record also uses Postgres and starts it when port 54329 is closed. [`.github/workflows/examples.yml`](../.github/workflows/examples.yml) runs that script on pull requests and on pushes to `main`, then `docker compose run --build --rm counting-house` and `docker compose --profile postgres run --build --rm object-record`. The approval test builds `outputs/offline-bundle.tar` and runs it on an internal network. The handoff test builds the amd64 and arm64 workers and points both at `deoos-server`.
+`./scripts/test.sh` runs every example above against RustFS. The dbt example pip-installs `tests/requirements-dbt.txt` into the examples virtualenv. The Airflow comparison installs Airflow 2.11 into `.venv-airflow` with Apache's constraint file. Neither job uses a cloud account. Object record also uses Postgres and starts it when port 54329 is closed. [`.github/workflows/examples.yml`](../.github/workflows/examples.yml) runs that script on pull requests and on pushes to `main`, then `docker compose run --build --rm counting-house` and `docker compose --profile postgres run --build --rm object-record`. The approval test builds `outputs/offline-bundle.tar` and runs it on an internal network. The handoff test builds the amd64 and arm64 workers and points both at `deoos-server`.
 
 Start RustFS first (`docker compose up -d rustfs`, or the setup command above).
