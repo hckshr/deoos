@@ -56,20 +56,32 @@ def create_bucket(endpoint, bucket):
 
 
 def delete_bucket(client, bucket):
-    try:
-        client.head_bucket(Bucket=bucket)
-    except ClientError as error:
-        status = error.response["ResponseMetadata"]["HTTPStatusCode"]
-        if status == 404:
+    """Remove a test bucket. A late write can land between list and delete."""
+    last = None
+    for _ in range(8):
+        try:
+            client.head_bucket(Bucket=bucket)
+        except ClientError as error:
+            status = error.response["ResponseMetadata"]["HTTPStatusCode"]
+            if status == 404:
+                return
+            raise
+        for page in client.get_paginator("list_objects_v2").paginate(Bucket=bucket):
+            objects = [{"Key": row["Key"]} for row in page.get("Contents", [])]
+            if objects:
+                errors = client.delete_objects(Bucket=bucket, Delete={"Objects": objects}).get("Errors")
+                if errors:
+                    raise RuntimeError(f"could not delete objects in {bucket}: {errors}")
+        try:
+            client.delete_bucket(Bucket=bucket)
             return
-        raise
-    for page in client.get_paginator("list_objects_v2").paginate(Bucket=bucket):
-        objects = [{"Key": row["Key"]} for row in page.get("Contents", [])]
-        if objects:
-            errors = client.delete_objects(Bucket=bucket, Delete={"Objects": objects}).get("Errors")
-            if errors:
-                raise RuntimeError(f"could not delete objects in {bucket}: {errors}")
-    client.delete_bucket(Bucket=bucket)
+        except ClientError as error:
+            code = error.response.get("Error", {}).get("Code", "")
+            if code != "BucketNotEmpty":
+                raise
+            last = error
+            time.sleep(0.4)
+    raise last
 
 
 def start_deoos_server(binary, bucket, prefix, log, endpoint, *, lease_ms=5000, token=None):
