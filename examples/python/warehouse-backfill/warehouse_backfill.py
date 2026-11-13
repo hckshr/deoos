@@ -81,10 +81,16 @@ def replace_day(database, day, orders):
             )""")
         connection.execute("BEGIN TRANSACTION")
         try:
-            connection.execute("DELETE FROM orders WHERE day = ?", [day])
+            # Primary key is order_id. A second execution of this day replaces those
+            # rows instead of inserting another copy.
             connection.executemany(
-                "INSERT INTO orders (order_id, day, cents) VALUES (?, ?, ?)",
+                "INSERT OR REPLACE INTO orders (order_id, day, cents) VALUES (?, ?, ?)",
                 [(row["order_id"], row["day"], row["cents"]) for row in orders],
+            )
+            connection.execute(
+                """DELETE FROM orders
+                   WHERE day = ? AND order_id NOT IN (SELECT UNNEST(?))""",
+                [day, [row["order_id"] for row in orders]],
             )
             connection.execute("COMMIT")
         except Exception:

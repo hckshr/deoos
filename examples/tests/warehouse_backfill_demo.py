@@ -57,21 +57,27 @@ def drain(client):
     raise TimeoutError(f"backfill did not finish; schedule={client.inspect_schedule(SCHEDULE_ID)}")
 
 
+def expected_orders():
+    from warehouse_backfill import day_key, orders_for
+    rows = []
+    for at_ms in expected_at():
+        rows.extend(orders_for(day_key(at_ms)))
+    return sorted((row["order_id"], row["day"], row["cents"]) for row in rows)
+
+
 def warehouse_rows(database):
     import duckdb
     connection = duckdb.connect(database, read_only=True)
     try:
-        grouped = connection.execute(
-            """SELECT day, COUNT(*), COUNT(DISTINCT order_id), COALESCE(SUM(cents), 0)
-               FROM orders GROUP BY day ORDER BY day"""
+        stored = connection.execute(
+            "SELECT order_id, day, cents FROM orders ORDER BY order_id"
         ).fetchall()
         duplicate = connection.execute(
-            "SELECT order_id FROM orders GROUP BY order_id HAVING COUNT(*) > 1"
+            "SELECT order_id, COUNT(*) FROM orders GROUP BY order_id HAVING COUNT(*) > 1"
         ).fetchall()
-        total = connection.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
     finally:
         connection.close()
-    return grouped, duplicate, total
+    return stored, duplicate
 
 
 def main():
@@ -136,27 +142,26 @@ def main():
         check(found[START_MS]["status"] == "completed", found.get(START_MS))
         check("load" not in found[crashed_at]["steps"], found[crashed_at]["steps"])
         drain(client)
-        grouped, duplicate, total = warehouse_rows(str(database))
+        expected = expected_orders()
+        stored, duplicate = warehouse_rows(str(database))
         check(duplicate == [], duplicate)
-        check(total == DAY_COUNT * ROWS_PER_DAY, total)
-        days = [row[0] for row in grouped]
-        check(days == ["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"], grouped)
-        check(all(row[1] == ROWS_PER_DAY and row[2] == ROWS_PER_DAY and row[3] == 600 for row in grouped), grouped)
+        check(stored == expected, (stored, expected))
         executions = Counter(execution_log.read_text(encoding="utf-8").splitlines())
         check(executions == Counter({
             "2024-01-01": 1, "2024-01-02": 2, "2024-01-03": 1, "2024-01-04": 1,
         }), executions)
+        check(sum(1 for row in stored if row[1] == CRASH_DAY) == ROWS_PER_DAY, stored)
         snapshot = execution_log.read_text(encoding="utf-8")
         client.backfill(SCHEDULE_ID, start_ms, end_ms, limit=DAY_COUNT)
         client.resume_schedule(SCHEDULE_ID)
         drain(client)
         check(execution_log.read_text(encoding="utf-8") == snapshot, "the second backfill executed a day again")
-        grouped, duplicate, total = warehouse_rows(str(database))
-        check(duplicate == [] and total == DAY_COUNT * ROWS_PER_DAY, (duplicate, total, grouped))
+        stored, duplicate = warehouse_rows(str(database))
+        check(duplicate == [] and stored == expected, (duplicate, stored))
         for at in expected_at():
             task = client.inspect(occurrence_id(SCHEDULE_ID, at))
             check(task["status"] == "completed" and task["schedule"]["scheduled_at"] == at, task["id"])
-        print("warehouse backfill: 12 unique rows, crashed day loaded twice, second backfill wrote nothing", flush=True)
+        print("warehouse backfill: 12 order ids once each; 2024-01-02 committed twice; second backfill wrote nothing", flush=True)
     finally:
         stop_process(worker)
         if "worker_log" in locals():

@@ -2,7 +2,7 @@
 
 Four historical days are loaded into a local DuckDB file. Each day is one schedule occurrence. The occurrence id is `schedule-` plus the first 32 hex characters of SHA-256 over `{schedule id}/{timestamp}`. Submitting that id again returns the task that is already there.
 
-The day's rows are deleted and inserted in one transaction. If the worker is killed after that commit and before deoos saves the `load` step, the next claim runs the step again and writes the same rows. A second `backfill` of the same range walks the same ids. Completed tasks are not executed again.
+Each order is upserted with `INSERT OR REPLACE` on `order_id`. If the worker is killed after that commit and before deoos saves the `load` step, the next claim runs the step again and replaces the same keys. The execution log records that second call. The table still has one row per order. A second `backfill` of the same range walks the same task ids, and completed tasks are not executed again.
 
 This is an interval backfill, not a calendar backfill. The grid is 86400000 milliseconds from 2024-01-01T00:00:00Z. deoos does not accept a cron expression, a timezone, or a DST rule. `end_ms` has to be in the past, and the engine caps one request at 1000 occurrences. Occurrences run one at a time when `overlap` is `skip`.
 
@@ -36,6 +36,6 @@ python python/warehouse-backfill/warehouse_backfill.py work
 
 `python tests/warehouse_backfill_demo.py` kills the worker after 2024-01-02 has been committed and before its checkpoint exists, starts a worker again, then runs the same backfill a second time.
 
-- The table has 12 rows, 3 per day, and no duplicate `order_id`.
-- The execution log shows 2024-01-02 twice and the other three days once. The second backfill does not add a line.
+- The table's rows equal the 12 generated orders. Each `order_id` appears once, including after 2024-01-02 is committed a second time.
+- The execution log shows 2024-01-02 twice and the other three days once. That count is calls, not stored rows. The second backfill does not add a line.
 - Calling `backfill` again while that cursor is active returns the same range.
