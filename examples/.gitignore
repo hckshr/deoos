@@ -1,5 +1,9 @@
 .deoos/
 .venv/
+.venv-airflow/
+python/dbt-duckdb/project/target/
+python/dbt-duckdb/project/logs/
+python/dbt-duckdb/project/dbt_packages/
 node_modules/
 outputs/
 docker/offline-tarballs/*.tar.gz

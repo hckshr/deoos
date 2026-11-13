@@ -1,0 +1,6 @@
+order_id,day,status,cents
+a,2024-03-15,paid,1000
+b,2024-03-15,paid,2500
+c,2024-03-15,refunded,400
+d,2024-03-15,pending,100
+e,2024-03-14,paid,900

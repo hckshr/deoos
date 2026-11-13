@@ -1,0 +1,8 @@
+name: orders_pipeline
+version: "1.0.0"
+config-version: 2
+profile: orders_pipeline
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+clean-targets: ["target", "dbt_packages", "logs"]

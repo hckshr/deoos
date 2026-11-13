@@ -35,5 +35,15 @@ python tests/nightly_batch_resume_demo.py
 python tests/agent_run_resume_demo.py
 python tests/offline_approval_ledger_demo.py
 python tests/multi_arch_handoff_demo.py
+echo "scheduled ETL (dependencies, retry, skip-on-overlap)"
+python tests/scheduled_etl_demo.py
+echo "warehouse backfill (idempotent reload after a crash)"
+python tests/warehouse_backfill_demo.py
+echo "partition sensor (RustFS object)"
+python tests/partition_sensor_demo.py
+echo "dbt seed, run, and test"
+python tests/dbt_duckdb_demo.py
+echo "Airflow DAG and deoos rewrite"
+python tests/airflow_compare_demo.py
 # Drop vendored release archives so a later image build does not upload them as context.
 rm -f docker/offline-tarballs/*.tar.gz docker/offline-tarballs/SHA256SUMS
