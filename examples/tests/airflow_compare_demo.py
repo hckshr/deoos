@@ -26,6 +26,8 @@ def venv_python():
 
 
 def airflow_ready(python):
+    if not Path(python).is_file():
+        return False
     probe = subprocess.run([str(python), "-c", "import airflow"], capture_output=True, text=True)
     return probe.returncode == 0
 
